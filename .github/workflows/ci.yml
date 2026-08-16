@@ -162,7 +162,7 @@ jobs:
       - uses: sigstore/cosign-installer@v3.9.2
       - name: Build and publish immutable image
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
