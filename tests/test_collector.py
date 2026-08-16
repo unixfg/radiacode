@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from datetime import UTC, datetime
 from pathlib import Path
+from threading import Event
 from typing import Any
 from unittest.mock import patch
 from uuid import UUID, uuid4
@@ -57,6 +58,9 @@ class FakeDevice:
         self.reads += 1
         return self.payload
 
+    def firmware_version(self) -> tuple[int, int]:
+        return 4, 13
+
     def read_spectrum(self, *, observed_at: datetime | None = None) -> DeviceSpectrum:
         return DeviceSpectrum(observed_at or NOW, 0, (0.0, 1.0, 0.0), (0, 0, 0))
 
@@ -70,6 +74,7 @@ class FakeSink:
         self.fail_commits = 0
         self.commit_attempts: list[tuple[RawBatch, DecodeResult]] = []
         self.persisted_expected_sequence: int | None = None
+        self.connection_opens: list[tuple[UUID, datetime, tuple[int, int] | None]] = []
 
     def healthcheck(self) -> bool:
         return self.healthy
@@ -87,7 +92,7 @@ class FakeSink:
         *,
         firmware: tuple[int, int] | None = None,
     ) -> None:
-        return None
+        self.connection_opens.append((connection_id, connected_at, firmware))
 
     def record_connection_close(
         self,
@@ -178,7 +183,6 @@ class CollectorTests(unittest.TestCase):
             self.assertEqual(spool.pending_count(), 0)
             self.assertEqual(device.reads, 1)
             self.assertEqual(len(sink.commit_attempts), 1)
-            self.assertEqual(collector.expected_sequence, 11)
             self.assertEqual(len(telemetry.updates), 1)
             self.assertEqual(telemetry.updates[0].cps, 12.5)
             self.assertEqual(telemetry.updates[0].observed_at, NOW)
@@ -203,13 +207,64 @@ class CollectorTests(unittest.TestCase):
             self.assertEqual(device.reads, 1)
             self.assertEqual(len(sink.commit_attempts), 2)
             self.assertEqual(sink.commit_attempts[0][0].batch_id, sink.commit_attempts[1][0].batch_id)
-            self.assertEqual(collector.expected_sequence, 252)
             self.assertEqual(len(telemetry.updates), 2)
             self.assertEqual(telemetry.updates[0].cps, 12.5)
             self.assertEqual(telemetry.updates[0].observed_at, NOW)
             self.assertTrue(telemetry.updates[1].charging)
             self.assertEqual(telemetry.updates[1].observed_at, NOW)
             self.assertEqual(telemetry.events, [])
+            spool.close()
+
+    def test_separate_data_buf_reads_do_not_share_sequence_expectations(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            spool = SQLiteSpool(Path(directory) / "spool.sqlite3", max_bytes=1_000_000)
+            sink = FakeSink()
+            device = FakeDevice(realtime_payload(sequence=10))
+            collector = Collector(settings(), sink, spool, utcnow=lambda: NOW)
+
+            first = collector.poll_data_once(device, uuid4())
+            second = collector.poll_data_once(device, uuid4())
+
+            self.assertIsNotNone(first)
+            self.assertIsNotNone(second)
+            assert first is not None
+            assert second is not None
+            self.assertEqual(first.warnings, ())
+            self.assertEqual(second.warnings, ())
+            spool.close()
+
+    def test_connection_persists_target_firmware_when_available(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            spool = SQLiteSpool(Path(directory) / "spool.sqlite3", max_bytes=1_000_000)
+            sink = FakeSink()
+            device = FakeDevice(b"")
+            stop = Event()
+
+            original_record_open = sink.record_connection_open
+
+            def record_open(
+                connection_id: UUID,
+                connected_at: datetime,
+                *,
+                firmware: tuple[int, int] | None = None,
+            ) -> None:
+                original_record_open(connection_id, connected_at, firmware=firmware)
+                stop.set()
+
+            sink.record_connection_open = record_open  # type: ignore[method-assign]
+            collector = Collector(
+                settings(),
+                sink,
+                spool,
+                adapter_factory=lambda: device,
+                utcnow=lambda: NOW,
+            )
+
+            collector.run(stop)
+
+            self.assertEqual(len(sink.connection_opens), 1)
+            self.assertEqual(sink.connection_opens[0][2], (4, 13))
+            self.assertTrue(device.closed)
             spool.close()
 
     def test_unhealthy_database_prevents_destructive_read(self) -> None:

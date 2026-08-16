@@ -17,9 +17,17 @@ const WIDTH = 900;
 const HEIGHT = 300;
 const PAD = { top: 20, right: 22, bottom: 42, left: 58 };
 
-function SpectrumPlot({ series, logarithmic }: { series: Series[]; logarithmic: boolean }) {
+function SpectrumPlot({
+  series,
+  logarithmic,
+  emptyMessage,
+}: {
+  series: Series[];
+  logarithmic: boolean;
+  emptyMessage: string;
+}) {
   const all = series.flatMap((item) => item.points);
-  if (all.length === 0) return <div className="chart-empty">No spectrum is available in this range</div>;
+  if (all.length === 0) return <div className="chart-empty">{emptyMessage}</div>;
   const minX = Math.min(...all.map(([x]) => x));
   const maxX = Math.max(...all.map(([x]) => x));
   const displayY = (value: number) => (logarithmic ? Math.log10(value + 1) : value);
@@ -68,7 +76,13 @@ export function SpectrumChart({ spectra, logarithmic }: SpectrumProps) {
     // from calibrated plots. It remains available as overflow_count in the API.
     points: spectrum.counts.slice(0, -1).map((count, channel) => [energyForChannel(channel, spectrum.calibration), count] as [number, number]),
   }));
-  return <SpectrumPlot series={series} logarithmic={logarithmic} />;
+  return (
+    <SpectrumPlot
+      series={series}
+      logarithmic={logarithmic}
+      emptyMessage="No completed 5-minute spectrum frame in this range yet"
+    />
+  );
 }
 
 export function ComparisonChart({ comparison, logarithmic }: { comparison: ComparisonResponse; logarithmic: boolean }) {
@@ -81,5 +95,11 @@ export function ComparisonChart({ comparison, logarithmic }: { comparison: Compa
       return [start + (end - start) / 2, count] as [number, number];
     }),
   }));
-  return <SpectrumPlot series={series} logarithmic={logarithmic} />;
+  return (
+    <SpectrumPlot
+      series={series}
+      logarithmic={logarithmic}
+      emptyMessage="No completed 5-minute spectrum frames from both detectors in this range yet"
+    />
+  );
 }

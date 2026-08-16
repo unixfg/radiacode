@@ -351,7 +351,7 @@ def test_postgres_sink_atomic_replay_spectrum_and_maintenance(
     try:
         assert sink.healthcheck()
         device_id = sink.ensure_device()
-        sink.record_connection_open(connection_id, observed_at)
+        sink.record_connection_open(connection_id, observed_at, firmware=(4, 13))
         assert sink.commit_data_batch(batch, decoded)
         assert not sink.commit_data_batch(batch, decoded)
         assert sink.load_expected_sequence() == 4
@@ -369,11 +369,7 @@ def test_postgres_sink_atomic_replay_spectrum_and_maintenance(
         )
         assert sink.commit_data_batch(
             gap_batch,
-            decode_data_buf(
-                gap_payload,
-                gap_batch.received_at,
-                expected_sequence=sink.load_expected_sequence(),
-            ),
+            decode_data_buf(gap_payload, gap_batch.received_at),
         )
         assert sink.load_expected_sequence() == 7
 
@@ -466,7 +462,7 @@ def test_postgres_sink_atomic_replay_spectrum_and_maintenance(
                 (SELECT count(*) FROM radiacode_private.spectrum_snapshots)
             """
         ).fetchone()
-        assert counts == (2, 4, 2, 1, 1, 1, 2, 1)
+        assert counts == (2, 4, 2, 1, 1, 1, 1, 1)
         rolled_back = connection.execute(
             "SELECT count(*) FROM radiacode_private.raw_buffer_batches WHERE batch_id = %s",
             (failed_batch.batch_id,),
@@ -596,6 +592,32 @@ def test_public_repository_uses_reader_role_and_weights_scalar_rollups(
             """,
             (device_id, slug, f"private-{uuid4()}"),
         )
+        connection.execute(
+            """
+            INSERT INTO radiacode_private.connections(
+                connection_id, device_id, connected_at,
+                firmware_major, firmware_minor, app_version
+            ) VALUES (%s, %s, %s, 4, 13, 'integration-test')
+            """,
+            (uuid4(), device_id, base - timedelta(minutes=1)),
+        )
+        connection.execute(
+            """
+            INSERT INTO radiacode_private.data_gaps(
+                gap_id, device_id, detected_at, gap_kind
+            ) VALUES
+                (%s, %s, %s, 'data_buf_sequence_gap'),
+                (%s, %s, %s, 'count_regression')
+            """,
+            (
+                uuid4(),
+                device_id,
+                base + timedelta(seconds=1),
+                uuid4(),
+                device_id,
+                base + timedelta(seconds=2),
+            ),
+        )
         with connection.cursor() as cursor:
             cursor.executemany(
                 """
@@ -626,7 +648,19 @@ def test_public_repository_uses_reader_role_and_weights_scalar_rollups(
 
     with _reader_repository(integration_database.dsn) as (repository, reader_dsn):
         assert repository.ping()
-        assert any(row["slug"] == slug for row in repository.devices())
+        public_device = next(row for row in repository.devices() if row["slug"] == slug)
+        assert public_device["firmware_version"] == "4.13"
+        public_events = repository.events(
+            slug,
+            base - timedelta(minutes=2),
+            base + timedelta(minutes=2),
+            20,
+        )
+        assert not any(row["code"] == "data_buf_sequence_gap" for row in public_events)
+        assert any(
+            row["code"] == "count_regression" and row["name"] == "Spectrum acquisition gap"
+            for row in public_events
+        )
         with psycopg.connect(reader_dsn) as reader_connection:
             assert reader_connection.execute("SELECT current_user").fetchone() is not None
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
@@ -870,7 +904,7 @@ def test_spool_replays_batch_older_than_two_days(
 
         assert collector.drain_spool()
         assert spool.pending_count() == 0
-        assert collector.expected_sequence == 18
+        assert sink.load_expected_sequence() == 18
         with psycopg.connect(integration_database.dsn) as connection:
             persisted = connection.execute(
                 """

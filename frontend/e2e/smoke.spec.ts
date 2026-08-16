@@ -6,8 +6,8 @@ test.beforeEach(async ({ page }) => {
     let body: object;
     if (url.endsWith("/devices")) {
       body = { devices: [
-        { slug: "rc-110", name: "RadiaCode RC-110", model: "RC-110", available: true, last_seen_at: "2026-08-16T12:00:00Z" },
-        { slug: "rc-103g", name: "RadiaCode RC-103G", model: "RC-103G", available: true, last_seen_at: "2026-08-16T12:00:00Z" },
+        { slug: "rc-110", name: "RadiaCode RC-110", model: "RC-110", firmware_version: "4.12", available: true, last_seen_at: "2026-08-16T12:00:00Z" },
+        { slug: "rc-103g", name: "RadiaCode RC-103G", model: "RC-103G", firmware_version: "5.01", available: true, last_seen_at: "2026-08-16T12:00:00Z" },
       ] };
     } else if (url.endsWith("/current")) {
       const device = url.includes("rc-103g") ? "rc-103g" : "rc-110";
@@ -31,6 +31,10 @@ test("shows live and historical detector data", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "RadiaCode Observatory" })).toBeVisible();
   await expect(page.getByText("12.5").first()).toBeVisible();
+  await expect(page.getByText("CsI(Tl)")).toBeVisible();
+  await expect(page.getByText("GAGG(Ce)")).toBeVisible();
+  await expect(page.getByText("4.12")).toBeVisible();
+  await expect(page.getByText("5.01")).toBeVisible();
   await expect(page.getByRole("heading", { name: "RC-110 vs RC-103G" })).toBeVisible();
   await expect(page.getByRole("img", { name: /Time versus energy heatmap/ })).toBeVisible();
 });

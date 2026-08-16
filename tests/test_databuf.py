@@ -39,11 +39,48 @@ class DataBufferDecoderTests(unittest.TestCase):
         self.assertAlmostEqual(rare.values["temperature_c"], 3.45)
         self.assertAlmostEqual(rare.values["charge_pct"], 87.0)
 
-    def test_sequence_gap_is_preserved_but_known_record_decoding_continues(self) -> None:
-        payload = record(9, 0, 1, 0, struct.pack("<ff", 1.0, 2.0))
-        decoded = decode_data_buf(payload, self.received_at, expected_sequence=7)
-        self.assertIn("sequence_gap:expected=7:observed=9:distance=2", decoded.warnings)
-        self.assertEqual(decoded.records[0].kind, "raw")
+    def test_sequence_expectation_is_scoped_to_one_data_buf_response(self) -> None:
+        first = decode_data_buf(
+            record(6, 0, 1, 0, struct.pack("<ff", 1.0, 2.0)),
+            self.received_at,
+        )
+        second = decode_data_buf(
+            record(99, 0, 1, 1, struct.pack("<ff", 3.0, 4.0)),
+            self.received_at,
+        )
+
+        self.assertEqual(first.next_expected_sequence, 7)
+        self.assertEqual(second.next_expected_sequence, 100)
+        self.assertEqual(second.warnings, ())
+
+    def test_sequence_discontinuity_preserves_tail_without_projecting_it(self) -> None:
+        first = record(7, 0, 1, 0, struct.pack("<ff", 1.0, 2.0))
+        untrusted_tail = record(9, 0, 0, 1, struct.pack("<ffHHHB", 7.0, 0.1, 1, 2, 3, 4))
+        untrusted_tail += record(10, 0, 7, 2, struct.pack("<BBH", 20, 0, 0))
+
+        decoded = decode_data_buf(first + untrusted_tail, self.received_at)
+
+        self.assertTrue(decoded.unknown_tail)
+        self.assertEqual([item.kind for item in decoded.records], ["raw", "sequence_discontinuity"])
+        discontinuity = decoded.records[1]
+        self.assertEqual(discontinuity.raw_record, untrusted_tail)
+        self.assertIn(
+            "sequence_discontinuity:expected=8:observed=9:distance=1",
+            discontinuity.warnings,
+        )
+        self.assertNotIn("real_time", [item.kind for item in decoded.records])
+        self.assertNotIn("event", [item.kind for item in decoded.records])
+
+    def test_six_byte_user_record_keeps_following_record_aligned(self) -> None:
+        payload = record(40, 0, 4, 100, b"\x01\x02\x03\x04\x05\x06")
+        payload += record(41, 0, 1, 101, struct.pack("<ff", 12.5, 0.25))
+
+        decoded = decode_data_buf(payload, self.received_at)
+
+        self.assertEqual([item.sequence for item in decoded.records], [40, 41])
+        self.assertEqual([item.kind for item in decoded.records], ["user", "raw"])
+        self.assertEqual(decoded.records[0].raw_payload, b"\x01\x02\x03\x04\x05\x06")
+        self.assertEqual(decoded.warnings, ())
 
     def test_protocol_exposure_units_are_normalized_to_microsieverts(self) -> None:
         dose_rate_r_h = 1.23e-5

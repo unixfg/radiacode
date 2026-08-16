@@ -242,6 +242,7 @@ def create_app(
                     slug=row["slug"],
                     name=row["name"],
                     model=row["model"],
+                    firmware_version=row["firmware_version"],
                     available=_availability(row["last_seen_at"], now, configured.availability_seconds),
                     last_seen_at=row["last_seen_at"],
                 )

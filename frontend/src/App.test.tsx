@@ -1,12 +1,12 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
 
 const devices = {
   devices: [
-    { slug: "rc-110", name: "RadiaCode RC-110", model: "RC-110", available: true, last_seen_at: "2026-08-16T12:00:00Z" },
-    { slug: "rc-103g", name: "RadiaCode RC-103G", model: "RC-103G", available: true, last_seen_at: "2026-08-16T12:00:00Z" },
+    { slug: "rc-110", name: "RadiaCode RC-110", model: "RC-110", firmware_version: "4.12", available: true, last_seen_at: "2026-08-16T12:00:00Z" },
+    { slug: "rc-103g", name: "RadiaCode RC-103G", model: "RC-103G", firmware_version: "5.01", available: true, last_seen_at: "2026-08-16T12:00:00Z" },
   ],
 };
 
@@ -56,7 +56,10 @@ function mockApi() {
   }) as Response);
 }
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe("public dashboard", () => {
   it("renders live values and historical panels from the public API", async () => {
@@ -65,6 +68,14 @@ describe("public dashboard", () => {
 
     expect(screen.getByRole("heading", { name: "RadiaCode Observatory" })).toBeInTheDocument();
     expect(await screen.findByText("12.5")).toBeInTheDocument();
+    expect(screen.getByText("CsI(Tl)")).toBeInTheDocument();
+    expect(screen.getByText("GAGG(Ce)")).toBeInTheDocument();
+    expect(screen.getByText("4.12")).toBeInTheDocument();
+    expect(screen.getByText("5.01")).toBeInTheDocument();
+    expect(screen.queryByText("Temperature")).not.toBeInTheDocument();
+    expect(screen.queryByText("Battery")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Continuous environmental gamma radiation/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No device controls/)).not.toBeInTheDocument();
     expect(await screen.findByText("Detector reconnected")).toBeInTheDocument();
     expect(screen.getAllByRole("img", { name: "Energy spectrum" })).toHaveLength(2);
     expect(screen.getByRole("img", { name: /Time versus energy heatmap/ })).toBeInTheDocument();
@@ -78,5 +89,73 @@ describe("public dashboard", () => {
 
     expect(await screen.findByText(/Dashboard data is temporarily unavailable/)).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText(/postgres password/)).not.toBeInTheDocument());
+  });
+
+  it("advances a rolling range and discovers a newly completed spectrum frame", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-16T12:00:00Z"));
+    const historyEnds: string[] = [];
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      const requestEnd = new URL(url, "http://dashboard.test").searchParams.get("end");
+      if (url.includes("scalar-history")) {
+        historyEnds.push(requestEnd!);
+      }
+      let body = responseFor(url);
+      if (requestEnd === "2026-08-16T12:00:00.000Z") {
+        if (url.includes("spectrum-comparison")) {
+          body = { energy_edges_kev: [], series: [], rebinned: true };
+        } else if (url.includes("/spectrogram")) {
+          body = { device: "rc-110", time_edges: [], energy_edges_kev: [], counts: [], source_resolution: "frame", rebinned: true };
+        } else if (url.includes("/spectrum")) {
+          body = { device: "rc-110", spectra: [], rebinned: false };
+        }
+      }
+      return { ok: true, json: async () => body } as Response;
+    });
+
+    render(<App />);
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(historyEnds).toHaveLength(1);
+    expect(screen.getAllByText(/No completed 5-minute spectrum frame/)).not.toHaveLength(0);
+
+    await act(async () => vi.advanceTimersByTimeAsync(60_000));
+    expect(historyEnds).toHaveLength(2);
+    expect(Date.parse(historyEnds[1]) - Date.parse(historyEnds[0])).toBe(60_000);
+    expect(screen.getAllByRole("img", { name: "Energy spectrum" })).toHaveLength(2);
+
+    await act(async () => vi.advanceTimersByTimeAsync(299_999));
+    expect(historyEnds).toHaveLength(2);
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    expect(historyEnds).toHaveLength(3);
+  });
+
+  it("keeps a custom range fixed without periodic refreshes", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-16T12:00:00Z"));
+    const historyEnds: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("scalar-history")) {
+        historyEnds.push(new URL(url, "http://dashboard.test").searchParams.get("end")!);
+      }
+      return { ok: true, json: async () => responseFor(url) } as Response;
+    });
+
+    render(<App />);
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(historyEnds).toHaveLength(1);
+
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-08-15T08:00" } });
+    fireEvent.change(screen.getByLabelText("To"), { target: { value: "2026-08-15T10:00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(historyEnds).toHaveLength(2);
+    const fixedEnd = historyEnds[1];
+
+    await act(async () => vi.advanceTimersByTimeAsync(300_000));
+    expect(historyEnds).toHaveLength(2);
+    expect(historyEnds[1]).toBe(fixedEnd);
   });
 });

@@ -22,9 +22,10 @@ describe("spectrogram", () => {
     expect(screen.getByRole("img", { name: /Time versus energy heatmap/ })).toBeInTheDocument();
   });
 
-  it("clears and labels an empty range", () => {
+  it("explains that acquisition is waiting for a completed frame", () => {
     const { rerender } = render(<Spectrogram data={response([[1]])} />);
     rerender(<Spectrogram data={response([])} />);
-    expect(screen.getByRole("img", { name: /No spectrogram data/ })).toBeInTheDocument();
+    expect(screen.getByText(/No completed 5-minute spectrum frame in this range yet/)).toBeInTheDocument();
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
 });

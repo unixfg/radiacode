@@ -133,6 +133,17 @@ class RadiaCodeAdapter:
         response = self._connected_client().read_request(VS.DATA_BUF)
         return bytes(response.data())
 
+    def firmware_version(self) -> tuple[int, int]:
+        """Return the target firmware version suitable for public device metadata."""
+
+        _boot, target = self._connected_client().fw_version()
+        if len(target) < 2:
+            raise ValueError("device returned an incomplete target firmware version")
+        major, minor = int(target[0]), int(target[1])
+        if major < 0 or minor < 0:
+            raise ValueError("device returned a negative target firmware version")
+        return major, minor
+
     def read_spectrum(self, *, observed_at: datetime | None = None) -> DeviceSpectrum:
         spectrum = self._connected_client().spectrum()
         return self._to_spectrum(spectrum, observed_at)

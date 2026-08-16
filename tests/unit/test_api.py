@@ -59,6 +59,7 @@ class FakeRepository:
                 "slug": "radiacode-110",
                 "name": "RadiaCode 110",
                 "model": "RC-110",
+                "firmware_version": "4.13",
                 "last_seen_at": NOW,
             }
         ]
@@ -131,6 +132,8 @@ def test_public_contract_and_no_private_identity() -> None:
     assert "device_id" not in combined
     assert "RC-110-007802" not in combined
     current = responses[1].json()
+    devices = responses[0].json()
+    assert devices["devices"][0]["firmware_version"] == "4.13"
     assert current["received_at"] is not None
     assert current["field_timestamps"]["cps"] != current["field_timestamps"]["battery_pct"]
     spectrum = responses[4].json()

@@ -2,6 +2,7 @@ export interface DeviceSummary {
   slug: string;
   name: string;
   model: string;
+  firmware_version?: string | null;
   available: boolean;
   last_seen_at: string | null;
 }

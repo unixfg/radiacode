@@ -59,7 +59,10 @@ RECORD_TYPES: Final[dict[tuple[int, int], _RecordType]] = {
     (0, 1): _RecordType("raw", "<ff"),
     (0, 2): _RecordType("dose_rate_db", "<IffHH"),
     (0, 3): _RecordType("rare", "<IfHHH"),
-    (0, 4): _RecordType("user", "<IffHH"),
+    # The upstream decoder marks this group TODO and assumes the 16-byte
+    # DoseRateDB shape. Current RC-110 and RC-103G firmware emits a six-byte
+    # opaque body; consuming 16 bytes steals ten bytes from the next record.
+    (0, 4): _RecordType("user", "<6x"),
     (0, 5): _RecordType("schedule", "<IffHH"),
     (0, 6): _RecordType("acceleration", "<HHH"),
     (0, 7): _RecordType("event", "<BBH"),
@@ -71,11 +74,11 @@ RECORD_TYPES: Final[dict[tuple[int, int], _RecordType]] = {
 }
 
 
-def _sequence_warning(expected: int | None, observed: int) -> str | None:
+def _sequence_discontinuity(expected: int | None, observed: int) -> str | None:
     if expected is None or expected == observed:
         return None
     missing = (observed - expected) % 256
-    return f"sequence_gap:expected={expected}:observed={observed}:distance={missing}"
+    return f"sequence_discontinuity:expected={expected}:observed={observed}:distance={missing}"
 
 
 def _decode_values(kind: str, body: bytes) -> tuple[dict[str, Any], int | None, tuple[str, ...]]:
@@ -99,7 +102,7 @@ def _decode_values(kind: str, body: bytes) -> tuple[dict[str, Any], int | None, 
             "count_rate": count_rate,
             "dose_rate": dose_rate * ROENTGEN_TO_MICROSIEVERT,
         }
-    elif kind in {"dose_rate_db", "user", "schedule"}:
+    elif kind in {"dose_rate_db", "schedule"}:
         count, count_rate, dose_rate, dose_error, flags = struct.unpack("<IffHH", body)
         values = {
             "count": count,
@@ -107,6 +110,9 @@ def _decode_values(kind: str, body: bytes) -> tuple[dict[str, Any], int | None, 
             "dose_rate": dose_rate * ROENTGEN_TO_MICROSIEVERT,
             "dose_rate_error_pct": dose_error / 10.0,
         }
+    elif kind == "user":
+        # Semantics are undocumented. The exact bytes remain in raw_payload.
+        values = {}
     elif kind == "rare":
         duration, dose, temperature, charge_level, flags = struct.unpack("<IfHHH", body)
         values = {
@@ -163,14 +169,25 @@ def _decode_values(kind: str, body: bytes) -> tuple[dict[str, Any], int | None, 
 
 def _anchor_sample_times(records: list[DecodedRecord], received_at: datetime) -> list[DecodedRecord]:
     anchor_tick = next(
-        (record.device_tick for record in reversed(records) if record.device_tick is not None),
+        (
+            record.device_tick
+            for record in reversed(records)
+            if record.device_tick is not None
+            and record.kind
+            not in {"sequence_discontinuity", "truncated_header", "truncated_record", "unknown"}
+        ),
         None,
     )
     if anchor_tick is None:
         return records
     anchored: list[DecodedRecord] = []
     for record in records:
-        if record.device_tick is None:
+        if record.device_tick is None or record.kind in {
+            "sequence_discontinuity",
+            "truncated_header",
+            "truncated_record",
+            "unknown",
+        }:
             anchored.append(record)
             continue
         # Work in the uint32 ring while retaining the signed tick exactly as sent.
@@ -195,8 +212,6 @@ def _anchor_sample_times(records: list[DecodedRecord], received_at: datetime) ->
 def decode_data_buf(
     payload: bytes,
     received_at: datetime,
-    *,
-    expected_sequence: int | None = None,
 ) -> DecodeResult:
     """Decode a v0.4.0 DATA_BUF payload without discarding undecodable bytes.
 
@@ -213,7 +228,10 @@ def decode_data_buf(
     global_warnings: list[str] = []
     truncated = False
     unknown_tail = False
-    next_expected = expected_sequence
+    # The sequence is meaningful only inside one DATA_BUF response. The pinned
+    # upstream decoder resets its expectation for every read, and live devices
+    # do not promise continuity between destructive reads.
+    next_expected: int | None = None
 
     while position < len(payload):
         start = position
@@ -244,9 +262,32 @@ def decode_data_buf(
         sequence, event_id, group_id, device_tick = HEADER.unpack_from(payload, position)
         position += HEADER.size
         record_warnings: list[str] = []
-        if sequence_warning := _sequence_warning(next_expected, sequence):
+        if sequence_warning := _sequence_discontinuity(next_expected, sequence):
+            # A discontinuity means the remaining byte boundary is no longer
+            # trustworthy. Preserve the complete tail for audit, but never
+            # project arbitrary tail bytes as measurements or detector events.
             record_warnings.append(sequence_warning)
             global_warnings.append(sequence_warning)
+            records.append(
+                DecodedRecord(
+                    record_index=len(records),
+                    sequence=sequence,
+                    event_id=event_id,
+                    group_id=group_id,
+                    device_tick=device_tick,
+                    received_at=received_at,
+                    sample_at=None,
+                    timestamp_quality="not_available",
+                    kind="sequence_discontinuity",
+                    flags=None,
+                    raw_record=payload[start:],
+                    raw_payload=payload[position:],
+                    warnings=tuple(record_warnings),
+                )
+            )
+            next_expected = None
+            unknown_tail = True
+            break
         next_expected = (sequence + 1) % 256
 
         record_type = RECORD_TYPES.get((event_id, group_id))

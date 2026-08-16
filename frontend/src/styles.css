@@ -187,7 +187,7 @@ h1, h2, p { margin-top: 0; }
 .detector-card--offline .status-pill i { background: var(--danger); }
 
 .primary-readings { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 32px 0 28px; }
-.secondary-readings { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; padding-top: 20px; border-top: 1px solid var(--border); }
+.secondary-readings { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 15px; padding-top: 20px; border-top: 1px solid var(--border); }
 
 .metric__label, .metric__detail { display: block; color: var(--muted); font-size: 0.73rem; }
 .metric__value { display: block; margin: 3px 0; font: 500 clamp(1.15rem, 2.2vw, 1.65rem)/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace; }
