@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
           cache: pip
@@ -67,7 +67,7 @@ jobs:
       RADIACODE_TEST_DATABASE_DSN: postgresql://postgres:postgres@127.0.0.1:5432/radiacode_test
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
           cache: pip
@@ -91,7 +91,7 @@ jobs:
           repository: OpenGammaProject/Gamma-MCA
           ref: d797c4b5cc09bfe213946c00dca9140f7d30d760
           path: gamma-mca
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - uses: actions/setup-node@v4
