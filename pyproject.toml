@@ -1,0 +1,62 @@
+[build-system]
+requires = ["hatchling==1.28.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "unixfg-radiacode"
+version = "0.1.0"
+description = "RadiaCode acquisition and history service"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+license = { text = "AGPL-3.0-only" }
+authors = [{ name = "unixfg" }]
+dependencies = [
+  "alembic==1.19.1",
+  "fastapi==0.116.1",
+  "paho-mqtt==2.1.0",
+  "prometheus-client==0.26.0",
+  "psycopg[binary,pool]==3.3.4",
+  "pydantic-settings==2.15.0",
+  "radiacode==0.4.0",
+  "structlog==26.1.0",
+  "typer==0.27.1",
+  "uvicorn[standard]==0.35.0",
+]
+
+[project.optional-dependencies]
+test = [
+  "httpx==0.28.1",
+  "hypothesis==6.165.9",
+  "jsonschema==4.25.1",
+  "lxml==6.0.1",
+  "mypy==2.3.1",
+  "pytest==9.1.1",
+  "pytest-cov==7.0.0",
+  "ruff==0.16.3",
+]
+
+[project.scripts]
+radiacode = "radiacode_app.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/radiacode_app"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/radiacode_app", "tests", "schemas", "README.md", "LICENSE"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-config --strict-markers"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+packages = ["radiacode_app"]
+mypy_path = "src"
