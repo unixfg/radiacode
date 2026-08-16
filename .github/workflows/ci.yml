@@ -1,0 +1,182 @@
+name: CI and image
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python 3.13
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e '.[test]'
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy
+      - run: pytest --cov=radiacode_app --cov-report=term-missing
+
+  frontend:
+    name: React dashboard
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm audit --audit-level=high
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+
+  postgres:
+    name: PostgreSQL 17 integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.6-bookworm
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: radiacode_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d radiacode_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      RADIACODE_TEST_DATABASE_DSN: postgresql://postgres:postgres@127.0.0.1:5432/radiacode_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: python -m pip install -e '.[test]'
+      - run: pytest -v tests/integration/test_postgres.py
+
+  interoperability:
+    name: Export interoperability
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: radiacode
+      - uses: actions/checkout@v4
+        with:
+          repository: sandialabs/SpecUtils
+          ref: 9f505befa832c422ff73f2d396269c71f8ddb7f9
+          path: specutils
+      - uses: actions/checkout@v4
+        with:
+          repository: OpenGammaProject/Gamma-MCA
+          ref: d797c4b5cc09bfe213946c00dca9140f7d30d760
+          path: gamma-mca
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: gamma-mca/package-lock.json
+      - name: Generate and schema-validate representative exports
+        working-directory: radiacode
+        run: |
+          python -m pip install -e '.[test]'
+          pytest -v tests/unit/test_exporters.py
+          python scripts/generate_interop_fixtures.py ../interop
+      - name: Build pinned SpecUtils converter
+        run: >-
+          cmake -S specutils -B specutils-build
+          -DCMAKE_BUILD_TYPE=Release
+          -DSpecUtils_BUILD_EXAMPLE=ON
+          -DSpecUtils_BUILD_UNIT_TESTS=OFF
+          -DSpecUtils_BUILD_REGRESSION_TEST=OFF
+          -DSpecUtils_ENABLE_D3_CHART=OFF
+      - run: cmake --build specutils-build --target convert_to_n42 --parallel 2
+      - name: Parse and write representative interchange files
+        run: |
+          specutils-build/examples/convert_to_n42 interop/representative.n42 interop/from-n42.n42
+          specutils-build/examples/convert_to_n42 interop/representative.spe interop/from-spe.n42
+          specutils-build/examples/convert_to_n42 interop/representative.xml interop/from-radiacode-xml.n42
+          python radiacode/scripts/verify_specutils_roundtrip.py \
+            interop/representative.n42 \
+            interop/from-n42.n42 \
+            interop/from-spe.n42 \
+            interop/from-radiacode-xml.n42
+      - name: Import NPESv2 and CSV through pinned Gamma MCA
+        working-directory: gamma-mca
+        run: |
+          npm ci --ignore-scripts
+          npx --yes tsx@4.20.6 \
+            ../radiacode/scripts/verify_gamma_mca.mjs \
+            source/raw-data.ts \
+            assets \
+            ../interop/representative.npes.json \
+            ../interop/representative.csv \
+            ../interop/representative.expected.json
+
+  publish:
+    name: Multi-architecture signed image
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs:
+      - python
+      - frontend
+      - postgres
+      - interoperability
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: sigstore/cosign-installer@v3.9.2
+      - name: Build and publish immutable image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+      - name: Sign immutable digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "ghcr.io/${GITHUB_REPOSITORY}@${DIGEST}"
+      - name: Publish digest summary
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: echo "ghcr.io/${GITHUB_REPOSITORY}@${DIGEST}" >> "$GITHUB_STEP_SUMMARY"
