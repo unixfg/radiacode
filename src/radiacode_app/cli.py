@@ -114,9 +114,12 @@ def collector_command(
     configure_logging(settings.log_level, tuple(secrets))
     stop = Event()
     _install_signal_handlers(stop)
-    start_http_server(settings.metrics_port, addr=settings.metrics_host)
     if settings.probe_on_start:
         probe_usb(settings)
+    # The collector's Kubernetes startup probe targets this listener.  Start it
+    # only after optional USB validation so a failed device probe cannot make
+    # the pod appear started before the process exits.
+    start_http_server(settings.metrics_port, addr=settings.metrics_host)
     collector, sink, spool = build_collector(settings)
     try:
         bootstrap_updates = sink.telemetry_bootstrap_updates()

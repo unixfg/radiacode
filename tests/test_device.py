@@ -46,8 +46,8 @@ class FakeClient:
     def spectrum_accum(self) -> Any:
         return self.spectrum()
 
-    def fw_version(self) -> tuple[tuple[int, int], tuple[int, int]]:
-        return (1, 2), (3, 4)
+    def fw_version(self) -> tuple[tuple[int, int, str], tuple[int, int, str]]:
+        return (1, 2, "boot"), (4, 13, "target")
 
 
 class USBError(RuntimeError):
@@ -89,6 +89,9 @@ class DeviceTests(unittest.TestCase):
         adapter.connect()
         result = adapter.probe()
         self.assertEqual(result["channel_count"], 3)
+        self.assertEqual(result["firmware"]["target_major"], 4)  # type: ignore[index]
+        self.assertEqual(result["firmware"]["target_minor"], 13)  # type: ignore[index]
+        self.assertEqual(adapter.firmware_version(), (4, 13))
         self.assertEqual(client.destructive_reads, 0)
         self.assertEqual(adapter.read_data_buf_raw(), b"raw-buffer")
         self.assertEqual(client.destructive_reads, 1)

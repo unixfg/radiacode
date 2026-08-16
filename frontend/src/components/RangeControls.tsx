@@ -5,7 +5,7 @@ import type { TimeRange } from "../types";
 
 interface Props {
   range: TimeRange;
-  onChange: (range: TimeRange) => void;
+  onChange: (range: TimeRange, mode: "rolling" | "fixed") => void;
 }
 
 const PRESETS = [
@@ -34,7 +34,7 @@ export function RangeControls({ range, onChange }: Props) {
       return;
     }
     setError(null);
-    onChange(next);
+    onChange(next, "fixed");
   }
 
   return (
@@ -46,7 +46,10 @@ export function RangeControls({ range, onChange }: Props) {
             type="button"
             onClick={() => {
               const endAt = new Date();
-              onChange({ start: new Date(endAt.getTime() - milliseconds), end: endAt });
+              onChange(
+                { start: new Date(endAt.getTime() - milliseconds), end: endAt },
+                "rolling",
+              );
             }}
           >
             {label}

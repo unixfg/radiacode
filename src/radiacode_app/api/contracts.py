@@ -13,6 +13,7 @@ class DeviceSummary(PublicModel):
     slug: str
     name: str
     model: str
+    firmware_version: str | None
     available: bool
     last_seen_at: datetime | None
 

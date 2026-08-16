@@ -42,8 +42,6 @@ class Sink(Protocol):
 
     def ensure_device(self) -> UUID: ...
 
-    def load_expected_sequence(self) -> int | None: ...
-
     def record_connection_open(
         self, connection_id: UUID, connected_at: datetime, *, firmware: tuple[int, int] | None = None
     ) -> None: ...
@@ -74,6 +72,8 @@ class Device(Protocol):
     def close(self) -> None: ...
 
     def read_data_buf_raw(self) -> bytes: ...
+
+    def firmware_version(self) -> tuple[int, int]: ...
 
     def read_spectrum(self, *, observed_at: datetime | None = None) -> DeviceSpectrum: ...
 
@@ -111,7 +111,6 @@ class Collector:
         self.marker_writer = marker_writer
         self.pod_uid = pod_uid or os.environ.get("POD_UID", "")
         self.telemetry_publisher = telemetry_publisher
-        self.expected_sequence: int | None = None
         self.last_valid_realtime_monotonic: float | None = None
         self._log = logger().bind(device=self.device_slug)
 
@@ -162,14 +161,9 @@ class Collector:
             return False
         for pending in self.spool.pending():
             try:
-                decoded = decode_data_buf(
-                    pending.batch.payload,
-                    pending.batch.received_at,
-                    expected_sequence=pending.batch.expected_sequence_before,
-                )
+                decoded = decode_data_buf(pending.batch.payload, pending.batch.received_at)
                 self.sink.commit_data_batch(pending.batch, decoded)
                 self.spool.acknowledge(pending.batch.batch_id)
-                self.expected_sequence = decoded.next_expected_sequence
                 for record in decoded.records:
                     self._forward_replayed_mqtt_record(record)
             except DatabaseUnavailable as error:
@@ -203,12 +197,11 @@ class Collector:
             received_at=received_at,
             payload=payload,
             sha256=spectrum_sha256(payload),
-            expected_sequence_before=self.expected_sequence,
         )
         # This FULL-synchronous WAL commit is deliberately before decoding.
         self.spool.append(batch)
         self._update_spool_metrics()
-        decoded = decode_data_buf(payload, received_at, expected_sequence=self.expected_sequence)
+        decoded = decode_data_buf(payload, received_at)
         try:
             self.sink.commit_data_batch(batch, decoded)
         except DatabaseUnavailable as error:
@@ -217,7 +210,6 @@ class Collector:
             DATABASE_FAILURES.labels(self.device_slug).inc()
             raise
         self.spool.acknowledge(batch.batch_id)
-        self.expected_sequence = decoded.next_expected_sequence
         self._update_spool_metrics()
         DATA_BATCHES.labels(self.device_slug, "committed").inc()
         for warning in decoded.warnings:
@@ -289,6 +281,22 @@ class Collector:
                 error_class=type(error).__name__,
             )
 
+    def _read_firmware_version(self, device: Device) -> tuple[int, int] | None:
+        """Read optional display metadata without masking a real USB failure."""
+
+        try:
+            return device.firmware_version()
+        except BaseException as error:
+            if isinstance(error, (KeyboardInterrupt, SystemExit)):
+                raise
+            if classify_usb_error(error) != USBFailureClass.OTHER:
+                raise
+            self._log.warning(
+                "firmware_version_unavailable",
+                error_class=type(error).__name__,
+            )
+            return None
+
     def _handle_usb_failure(self, error: BaseException, connection_id: UUID | None) -> bool:
         """Return true when the collector must stop and await pod replacement."""
 
@@ -334,14 +342,16 @@ class Collector:
                     set_collector_state(self.device_slug, "waiting_database")
                     stop.wait(self.settings.database_retry_seconds)
                     continue
-                if self.expected_sequence is None:
-                    self.expected_sequence = self.sink.load_expected_sequence()
-
                 set_collector_state(self.device_slug, "connecting")
                 device = self.adapter_factory()
                 device.connect()
                 connection_id = uuid4()
-                self.sink.record_connection_open(connection_id, self.utcnow())
+                firmware = self._read_firmware_version(device)
+                self.sink.record_connection_open(
+                    connection_id,
+                    self.utcnow(),
+                    firmware=firmware,
+                )
                 retry_count = 0
                 self.audit_accumulated_once(device, connection_id, kind="connection")
 

@@ -87,7 +87,7 @@ class PublicRepository:
             return list(
                 connection.execute(
                     """
-                    SELECT slug, display_name AS name, model, last_seen_at
+                    SELECT slug, display_name AS name, model, firmware_version, last_seen_at
                       FROM radiacode_api.device_status
                      ORDER BY display_name, slug
                     """

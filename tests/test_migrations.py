@@ -28,6 +28,15 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(stable_device_id("rc-test"), stable_device_id("rc-test"))
         self.assertNotEqual(stable_device_id("rc-test"), stable_device_id("rc-other"))
 
+    def test_device_metadata_migration_hides_legacy_decoder_gaps(self) -> None:
+        metadata = next(
+            migration.sql
+            for migration in bundled_migrations()
+            if migration.version == "0003_device_metadata_and_event_labels"
+        )
+        self.assertIn("firmware.firmware_version", metadata)
+        self.assertIn("gaps.gap_kind <> 'data_buf_sequence_gap'", metadata)
+
 
 if __name__ == "__main__":
     unittest.main()

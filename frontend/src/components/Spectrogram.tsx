@@ -38,9 +38,6 @@ export function Spectrogram({ data }: { data: SpectrogramResponse }) {
       context.clearRect(0, 0, width, height);
 
       if (!hasData) {
-        context.fillStyle = "#8da29c";
-        context.font = "14px Inter, system-ui, sans-serif";
-        context.fillText("No spectrogram data in this range", 24, 36);
         return;
       }
 
@@ -83,6 +80,14 @@ export function Spectrogram({ data }: { data: SpectrogramResponse }) {
     observer.observe(canvas);
     return () => observer.disconnect();
   }, [data, hasData]);
+
+  if (!hasData) {
+    return (
+      <div className="chart-empty chart-empty--tall">
+        No completed 5-minute spectrum frame in this range yet
+      </div>
+    );
+  }
 
   return (
     <div className="spectrogram-wrap">

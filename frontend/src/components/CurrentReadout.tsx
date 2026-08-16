@@ -6,6 +6,37 @@ interface Props {
   state?: CurrentState;
 }
 
+interface DetectorDetails {
+  scintillator: string;
+  crystal: string;
+  energyRange: string;
+  resolution: string;
+}
+
+// Manufacturer specifications:
+// https://radiacode.com/docs/en/100-series/devices/100-series-introduction/technical-specification
+const DETECTOR_DETAILS: Record<string, DetectorDetails> = {
+  "RC-110": {
+    scintillator: "CsI(Tl)",
+    crystal: "14 × 14 × 14 mm · 2.74 cm³",
+    energyRange: "20–3,000",
+    resolution: "8.4% ±0.3% FWHM at Cs-137",
+  },
+  "RC-103G": {
+    scintillator: "GAGG(Ce)",
+    crystal: "10 × 10 × 10 mm · 1.00 cm³",
+    energyRange: "25–3,000",
+    resolution: "7.4% ±0.3% FWHM at Cs-137",
+  },
+};
+
+const UNKNOWN_DETECTOR: DetectorDetails = {
+  scintillator: "Scintillator",
+  crystal: "Detector specification unavailable",
+  energyRange: "—",
+  resolution: "Energy range unavailable",
+};
+
 function Metric({ label, value, unit, detail }: { label: string; value: string; unit?: string; detail?: string }) {
   return (
     <div className="metric">
@@ -22,6 +53,8 @@ export function CurrentReadout({ device, state }: Props) {
   const available = state?.available ?? device.available;
   const uncertaintyCps = state?.cps_uncertainty_pct;
   const uncertaintyDose = state?.dose_rate_uncertainty_pct;
+  const detector = DETECTOR_DETAILS[device.model.toUpperCase()] ?? UNKNOWN_DETECTOR;
+  const firmware = device.firmware_version?.trim() || null;
   const observed = (field: string): string | undefined => {
     const timestamp = state?.field_timestamps[field];
     return timestamp ? `As of ${formatLocalDate(timestamp)}` : undefined;
@@ -64,19 +97,20 @@ export function CurrentReadout({ device, state }: Props) {
           detail={observed("accumulated_duration_seconds")}
         />
         <Metric
-          label="Temperature"
-          value={formatNumber(state?.temperature_c, 1)}
-          unit="°C"
-          detail={observed("temperature_c")}
+          label="Firmware"
+          value={firmware ?? "Unavailable"}
+          detail={firmware ? "Reported by detector" : "Not reported by detector"}
         />
         <Metric
-          label="Battery"
-          value={formatNumber(state?.battery_pct, 0)}
-          unit="%"
-          detail={[
-            state?.charging == null ? undefined : state.charging ? "Charging" : "On battery",
-            observed("battery_pct"),
-          ].filter(Boolean).join(" · ") || undefined}
+          label="Scintillator"
+          value={detector.scintillator}
+          detail={detector.crystal}
+        />
+        <Metric
+          label="Energy range"
+          value={detector.energyRange}
+          unit="keV"
+          detail={detector.resolution}
         />
       </div>
       <footer>Last valid sample {formatLocalDate(state?.received_at ?? device.last_seen_at)}</footer>

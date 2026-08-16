@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { getCurrent, getHistoricalData, listDevices, PublicApiError } from "./api";
 import { CurrentReadout } from "./components/CurrentReadout";
@@ -14,6 +14,9 @@ function initialRange(): TimeRange {
   const end = new Date();
   return { start: new Date(end.getTime() - 24 * 60 * 60 * 1_000), end };
 }
+
+const EMPTY_SPECTRUM_REFRESH_MS = 60 * 1_000;
+const POPULATED_SPECTRUM_REFRESH_MS = 5 * 60 * 1_000;
 
 function SectionHeading({ eyebrow, title, detail }: { eyebrow: string; title: string; detail?: string }) {
   return (
@@ -33,6 +36,7 @@ function App() {
   const [current, setCurrent] = useState<Record<string, CurrentState>>({});
   const [history, setHistory] = useState<HistoricalData | null>(null);
   const [range, setRange] = useState<TimeRange>(initialRange);
+  const [rangeMode, setRangeMode] = useState<"rolling" | "fixed">("rolling");
   const [historyLoading, setHistoryLoading] = useState(false);
   const [deviceRetry, setDeviceRetry] = useState(0);
   const [historyRetry, setHistoryRetry] = useState(0);
@@ -42,7 +46,6 @@ function App() {
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [spectrumMode, setSpectrumMode] = useState<"latest" | "range">("latest");
   const [logarithmic, setLogarithmic] = useState(true);
-  const historyRequestKey = useRef("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -140,11 +143,6 @@ function App() {
     if (!selected) return;
     const controller = new AbortController();
     let retryTimer: number | undefined;
-    const requestKey = `${selected}:${range.start.toISOString()}:${range.end.toISOString()}`;
-    if (historyRequestKey.current !== requestKey) {
-      historyRequestKey.current = requestKey;
-      setHistory(null);
-    }
     setHistoryLoading(true);
     getHistoricalData(selected, devices.map((device) => device.slug), range, controller.signal)
       .then((result) => {
@@ -184,12 +182,51 @@ function App() {
     };
   }, [devices, historyRetry, range, selected]);
 
+  const spectrumStackPopulated = useMemo(() => {
+    if (history === null) return false;
+    const comparisonReady =
+      devices.length < 2 || (history.comparison?.series.length ?? 0) > 0;
+    return (
+      history.spectrum.spectra.length > 0 &&
+      history.latestSpectrum.spectra.length > 0 &&
+      comparisonReady &&
+      history.spectrogram.counts.length > 0
+    );
+  }, [devices.length, history]);
+
+  useEffect(() => {
+    if (!selected || rangeMode === "fixed") return;
+    const delay = spectrumStackPopulated
+      ? POPULATED_SPECTRUM_REFRESH_MS
+      : EMPTY_SPECTRUM_REFRESH_MS;
+    const timer = window.setTimeout(() => {
+      setRange((previous) => {
+        const duration = previous.end.getTime() - previous.start.getTime();
+        const end = new Date();
+        return { start: new Date(end.getTime() - duration), end };
+      });
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [range, rangeMode, selected, spectrumStackPopulated]);
+
   const selectedDevice = devices.find((device) => device.slug === selected);
   const publicError = deviceError || currentError || historyError;
   const displayedSpectra = useMemo(() => {
     if (spectrumMode === "range") return history?.spectrum.spectra ?? [];
     return history?.latestSpectrum.spectra ?? [];
   }, [history, spectrumMode]);
+
+  const changeRange = (next: TimeRange, mode: "rolling" | "fixed") => {
+    setHistory(null);
+    setRangeMode(mode);
+    setRange(next);
+  };
+
+  const selectDevice = (slug: string) => {
+    if (slug === selected) return;
+    setHistory(null);
+    setSelected(slug);
+  };
 
   return (
     <div className="app-shell">
@@ -199,7 +236,6 @@ function App() {
         <div className="masthead__title">
           <span className="eyebrow">DOESTHINGS.ONLINE · PUBLIC TELEMETRY</span>
           <h1>RadiaCode Observatory</h1>
-          <p>Continuous environmental gamma radiation, measured independently by two detectors.</p>
         </div>
         <div className="refresh-state" aria-live="polite">
           <span className={devices.some((device) => current[device.slug]?.available) ? "pulse" : "pulse pulse--quiet"} />
@@ -238,13 +274,13 @@ function App() {
                 role="tab"
                 aria-selected={selected === device.slug}
                 key={device.slug}
-                onClick={() => setSelected(device.slug)}
+                onClick={() => selectDevice(device.slug)}
               >
                 {device.name}
               </button>
             ))}
           </div>
-          <RangeControls range={range} onChange={setRange} />
+          <RangeControls range={range} onChange={changeRange} />
         </section>
 
         <div className={`dashboard-grid ${historyLoading ? "dashboard-grid--loading" : ""}`} aria-busy={historyLoading}>
@@ -275,7 +311,7 @@ function App() {
           </section>
 
           <section className="panel panel--timeline">
-            <SectionHeading eyebrow="EVENTS" title="Detector timeline" detail={`${history?.events.events.length ?? 0} in range`} />
+            <SectionHeading eyebrow="EVENTS" title="Detector timeline" detail={`${history?.events.events.length ?? 0} events in range`} />
             <EventTimeline events={history?.events.events ?? []} />
           </section>
 
@@ -326,7 +362,6 @@ function App() {
           Open environmental radiation data · Read-only public dashboard ·{" "}
           <a href="https://github.com/unixfg/radiacode">AGPL-3.0 source</a>
         </p>
-        <p>No device controls, serial numbers, or operational details are exposed.</p>
       </footer>
     </div>
   );
