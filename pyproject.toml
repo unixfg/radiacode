@@ -12,7 +12,7 @@ license = { text = "AGPL-3.0-only" }
 authors = [{ name = "unixfg" }]
 dependencies = [
   "alembic==1.19.1",
-  "fastapi==0.116.1",
+  "fastapi==0.141.1",
   "paho-mqtt==2.1.0",
   "prometheus-client==0.26.0",
   "psycopg[binary,pool]==3.3.4",
