@@ -7,7 +7,7 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-FROM python:3.13.7-slim-bookworm AS wheel
+FROM python:3.14.7-slim-bookworm AS wheel
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1
 WORKDIR /build
@@ -15,7 +15,7 @@ COPY pyproject.toml README.md LICENSE ./
 COPY src/ ./src/
 RUN python -m pip wheel --wheel-dir /wheels .
 
-FROM python:3.13.7-slim-bookworm AS runtime
+FROM python:3.14.7-slim-bookworm AS runtime
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
