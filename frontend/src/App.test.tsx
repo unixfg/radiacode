@@ -64,9 +64,10 @@ afterEach(() => {
 describe("public dashboard", () => {
   it("renders live values and historical panels from the public API", async () => {
     const fetchMock = mockApi();
-    render(<App />);
+    const { container } = render(<App />);
 
     expect(screen.getByRole("heading", { name: "RadiaCode Observatory" })).toBeInTheDocument();
+    expect(container.querySelector("img.brand-mark")).toHaveAttribute("src", expect.stringContaining("image/svg+xml"));
     expect(await screen.findByText("12.5")).toBeInTheDocument();
     expect(screen.getByText("CsI(Tl)")).toBeInTheDocument();
     expect(screen.getByText("GAGG(Ce)")).toBeInTheDocument();

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { getCurrent, getHistoricalData, listDevices, PublicApiError } from "./api";
+import brandMarkUrl from "./assets/brand-mark.svg";
 import { CurrentReadout } from "./components/CurrentReadout";
 import { EventTimeline } from "./components/EventTimeline";
 import { RangeControls } from "./components/RangeControls";
@@ -232,7 +233,7 @@ function App() {
     <div className="app-shell">
       <header className="masthead">
         <a href="#main" className="skip-link">Skip to dashboard</a>
-        <div className="brand-mark" aria-hidden="true"><span /><span /><span /></div>
+        <img className="brand-mark" src={brandMarkUrl} alt="" aria-hidden="true" />
         <div className="masthead__title">
           <span className="eyebrow">DOESTHINGS.ONLINE · PUBLIC TELEMETRY</span>
           <h1>RadiaCode Observatory</h1>

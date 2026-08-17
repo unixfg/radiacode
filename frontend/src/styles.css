@@ -66,30 +66,11 @@ button:focus-visible, input:focus-visible, a:focus-visible {
 .skip-link:focus { top: 16px; }
 
 .brand-mark {
-  width: 70px;
-  height: 70px;
-  position: relative;
-  border: 1px solid #315249;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
+  display: block;
+  width: 88px;
+  height: 56px;
+  object-fit: contain;
 }
-
-.brand-mark::before, .brand-mark::after, .brand-mark span {
-  content: "";
-  position: absolute;
-  width: 18px;
-  height: 34px;
-  border-radius: 50% 50% 10% 10%;
-  background: var(--accent);
-  transform-origin: 50% 100%;
-}
-
-.brand-mark span:nth-child(1) { transform: translateY(-5px); }
-.brand-mark span:nth-child(2) { transform: rotate(120deg) translateY(-5px); }
-.brand-mark span:nth-child(3) { transform: rotate(240deg) translateY(-5px); }
-.brand-mark::before { width: 14px; height: 14px; border-radius: 50%; background: #07100f; z-index: 2; }
-.brand-mark::after { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); z-index: 3; }
 
 .eyebrow {
   display: block;
@@ -304,10 +285,7 @@ h1, h2, p { margin-top: 0; }
 @media (max-width: 760px) {
   .masthead, main, .site-footer, .public-error { width: min(100% - 28px, 1480px); }
   .masthead { min-height: 220px; grid-template-columns: auto 1fr; gap: 17px; padding: 28px 0; }
-  .brand-mark { width: 48px; height: 48px; }
-  .brand-mark::before, .brand-mark::after, .brand-mark span { transform: scale(0.7); }
-  .brand-mark span:nth-child(2) { transform: rotate(120deg) translateY(-5px) scale(0.7); }
-  .brand-mark span:nth-child(3) { transform: rotate(240deg) translateY(-5px) scale(0.7); }
+  .brand-mark { width: 64px; height: 44px; }
   .refresh-state { grid-column: 1 / -1; }
   .detector-grid { grid-template-columns: 1fr; }
   .detector-card { padding: 20px; }
