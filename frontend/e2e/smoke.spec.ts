@@ -30,6 +30,12 @@ test.beforeEach(async ({ page }) => {
 test("shows live and historical detector data", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "RadiaCode Observatory" })).toBeVisible();
+  await expect(page.locator("img.brand-mark")).toBeVisible();
+  const faviconHref = await page.locator('link[rel="icon"]').getAttribute("href");
+  expect(faviconHref).toBeTruthy();
+  const favicon = await page.request.get(new URL(faviconHref!, page.url()).toString());
+  expect(favicon.ok()).toBeTruthy();
+  expect(favicon.headers()["content-type"]).toContain("image/svg+xml");
   await expect(page.getByText("12.5").first()).toBeVisible();
   await expect(page.getByText("CsI(Tl)")).toBeVisible();
   await expect(page.getByText("GAGG(Ce)")).toBeVisible();
