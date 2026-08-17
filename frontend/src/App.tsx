@@ -9,6 +9,7 @@ import { ScalarChart } from "./components/ScalarChart";
 import { Spectrogram } from "./components/Spectrogram";
 import { ComparisonChart, SpectrumChart } from "./components/SpectrumCharts";
 import { formatLocalDate } from "./format";
+import { sourceUrl, THIRD_PARTY_NOTICES_URL } from "./legal";
 import type { CurrentState, DeviceSummary, HistoricalData, TimeRange } from "./types";
 
 function initialRange(): TimeRange {
@@ -361,7 +362,8 @@ function App() {
       <footer className="site-footer">
         <p>
           Open environmental radiation data · Read-only public dashboard ·{" "}
-          <a href="https://github.com/unixfg/radiacode">AGPL-3.0 source</a>
+          <a href={sourceUrl()}>AGPL-3.0 source</a> ·{" "}
+          <a href={THIRD_PARTY_NOTICES_URL}>Third-party notices</a>
         </p>
       </footer>
     </div>

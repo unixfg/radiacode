@@ -77,6 +77,14 @@ describe("public dashboard", () => {
     expect(screen.queryByText("Battery")).not.toBeInTheDocument();
     expect(screen.queryByText(/Continuous environmental gamma radiation/)).not.toBeInTheDocument();
     expect(screen.queryByText(/No device controls/)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "AGPL-3.0 source" })).toHaveAttribute(
+      "href",
+      "https://github.com/unixfg/radiacode",
+    );
+    expect(screen.getByRole("link", { name: "Third-party notices" })).toHaveAttribute(
+      "href",
+      "/assets/THIRD_PARTY_NOTICES.md",
+    );
     expect(await screen.findByText("Detector reconnected")).toBeInTheDocument();
     expect(screen.getAllByRole("img", { name: "Energy spectrum" })).toHaveLength(2);
     expect(screen.getByRole("img", { name: /Time versus energy heatmap/ })).toBeInTheDocument();

@@ -1,3 +1,12 @@
+"""Lossless ``DATA_BUF`` decoding with retained upstream protocol attribution.
+
+Record identifiers, wire layouts, and event identifiers are adapted from
+cdump/radiacode 0.4.0 commit 3e9a2aaec60aa1da06834310c5fb660133e734d3,
+copyright (c) 2021 Maxim Andreev, under the MIT License. See
+``LICENSES/radiacode-MIT.txt``. Framing, audit preservation, validation, and
+time anchoring are RadiaCode Observatory behavior layered on that protocol map.
+"""
+
 from __future__ import annotations
 
 import struct

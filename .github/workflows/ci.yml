@@ -167,6 +167,9 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: |
+            SOURCE_REVISION=${{ github.sha }}
+            SOURCE_URL=https://github.com/${{ github.repository }}
           tags: |
             ghcr.io/${{ github.repository }}:latest
             ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
