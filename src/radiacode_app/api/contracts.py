@@ -38,6 +38,10 @@ class CurrentState(PublicModel):
     field_timestamps: dict[str, datetime]
 
 
+class CurrentStatesResponse(PublicModel):
+    states: list[CurrentState]
+
+
 class ScalarValues(PublicModel):
     min: float
     max: float

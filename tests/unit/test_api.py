@@ -82,6 +82,29 @@ class FakeRepository:
             "charging": True,
         }
 
+    def current_states(self) -> list[dict[str, object]]:
+        online = self.current("radiacode-110")
+        assert online is not None
+        return [
+            {"slug": "radiacode-110", **online},
+            {
+                "slug": "radiacode-offline",
+                "last_seen_at": None,
+                "realtime_observed_at": None,
+                "status_observed_at": None,
+                "charging_observed_at": None,
+                "cps": None,
+                "dose_rate": None,
+                "cps_uncertainty_pct": None,
+                "dose_rate_uncertainty_pct": None,
+                "accumulated_dose": None,
+                "accumulated_duration_seconds": None,
+                "temperature_c": None,
+                "battery_pct": None,
+                "charging": None,
+            },
+        ]
+
     def scalar_history(self, *_args: object, **_kwargs: object) -> list[dict[str, object]]:
         return [
             {
@@ -118,6 +141,7 @@ def test_public_contract_and_no_private_identity() -> None:
     with client() as api:
         responses = (
             api.get("/api/v1/devices"),
+            api.get("/api/v1/device-states"),
             api.get("/api/v1/devices/radiacode-110/current"),
             api.get(f"/api/v1/devices/radiacode-110/scalar-history?start={start}&end={end}"),
             api.get(f"/api/v1/devices/radiacode-110/events?start={start}&end={end}"),
@@ -131,16 +155,24 @@ def test_public_contract_and_no_private_identity() -> None:
     assert "usb_serial" not in combined
     assert "device_id" not in combined
     assert "RC-110-007802" not in combined
-    current = responses[1].json()
+    states = responses[1].json()["states"]
+    current = responses[2].json()
     devices = responses[0].json()
     assert devices["devices"][0]["firmware_version"] == "4.13"
+    assert [state["device"] for state in states] == ["radiacode-110", "radiacode-offline"]
+    assert states[0]["available"] is True
+    assert states[0]["field_timestamps"]["cps"] != states[0]["field_timestamps"]["battery_pct"]
+    assert states[1]["available"] is False
+    assert states[1]["received_at"] is None
+    assert states[1]["cps"] is None
+    assert states[1]["field_timestamps"] == {}
     assert current["received_at"] is not None
     assert current["field_timestamps"]["cps"] != current["field_timestamps"]["battery_pct"]
-    spectrum = responses[4].json()
+    spectrum = responses[5].json()
     assert spectrum["rebinned"] is False
     assert spectrum["spectra"][0]["counts"] == [1, 2, 3, 4]
     assert spectrum["spectra"][0]["overflow_count"] == 4
-    spectrogram = responses[5].json()
+    spectrogram = responses[6].json()
     assert len(spectrogram["counts"]) == 4
     assert len(spectrogram["counts"][0]) == 3
 

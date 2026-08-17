@@ -23,6 +23,10 @@ export interface CurrentState {
   field_timestamps: Record<string, string>;
 }
 
+export interface CurrentStatesResponse {
+  states: CurrentState[];
+}
+
 export interface ScalarAggregate {
   min: number;
   max: number;

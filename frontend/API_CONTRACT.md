@@ -8,7 +8,9 @@ Non-2xx responses may use a generic public error body; the dashboard deliberatel
 
 - `GET /devices` returns `{ "devices": DeviceSummary[] }`. Each summary includes nullable `firmware_version`; the
   dashboard displays `Unavailable` when a detector has not reported it.
-- `GET /devices/{slug}/current` returns `CurrentState`. The dashboard polls this once every five seconds.
+- `GET /device-states` returns `{ "states": CurrentState[] }` in the same display-name/slug order as `/devices`.
+  The dashboard polls this collection once every five seconds while its browser tab is visible.
+- `GET /devices/{slug}/current` returns `CurrentState` and remains available for individual consumers.
   `received_at` is null until the first valid real-time sample arrives.
 - `GET /devices/{slug}/scalar-history?start={utc}&end={utc}&max_points=2000` returns `ScalarHistory`.
 - `GET /devices/{slug}/events?start={utc}&end={utc}&limit=500` returns `{ "events": DeviceEvent[] }`.

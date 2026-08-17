@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryFile
-from typing import Annotated, BinaryIO, Literal, cast
+from typing import Annotated, Any, BinaryIO, Literal, cast
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
@@ -29,6 +29,7 @@ from radiacode_app.logging import logger
 
 from .contracts import (
     CurrentState,
+    CurrentStatesResponse,
     DevicesResponse,
     DeviceSummary,
     EventsResponse,
@@ -88,6 +89,29 @@ def _field_timestamps(row: dict[str, object]) -> dict[str, datetime]:
     if isinstance(charging, datetime) and row.get("charging") is not None:
         result["charging"] = charging
     return result
+
+
+def _current_state(
+    slug: str,
+    row: dict[str, Any],
+    now: datetime,
+    availability_seconds: float,
+) -> CurrentState:
+    return CurrentState(
+        device=slug,
+        received_at=row["last_seen_at"],
+        available=_availability(row["last_seen_at"], now, availability_seconds),
+        cps=row["cps"],
+        dose_rate=row["dose_rate"],
+        cps_uncertainty_pct=row["cps_uncertainty_pct"],
+        dose_rate_uncertainty_pct=row["dose_rate_uncertainty_pct"],
+        accumulated_dose=row["accumulated_dose"],
+        accumulated_duration_seconds=row["accumulated_duration_seconds"],
+        temperature_c=row["temperature_c"],
+        battery_pct=row["battery_pct"],
+        charging=row["charging"],
+        field_timestamps=_field_timestamps(row),
+    )
 
 
 def _scalar_values(row: dict[str, object], prefix: str) -> ScalarValues | None:
@@ -250,27 +274,25 @@ def create_app(
             ]
         )
 
+    @app.get("/api/v1/device-states", response_model=CurrentStatesResponse)
+    def current_states() -> CurrentStatesResponse:
+        rows = repo.current_states()
+        now = datetime.now(UTC)
+        return CurrentStatesResponse(
+            states=[_current_state(row["slug"], row, now, configured.availability_seconds) for row in rows]
+        )
+
     @app.get("/api/v1/devices/{device}/current", response_model=CurrentState)
     def current(device: str) -> CurrentState:
         public_device = _slug(device)
         row = repo.current(public_device)
         if row is None:
             raise HTTPException(status_code=404, detail="device not found")
-        now = datetime.now(UTC)
-        return CurrentState(
-            device=public_device,
-            received_at=row["last_seen_at"],
-            available=_availability(row["last_seen_at"], now, configured.availability_seconds),
-            cps=row["cps"],
-            dose_rate=row["dose_rate"],
-            cps_uncertainty_pct=row["cps_uncertainty_pct"],
-            dose_rate_uncertainty_pct=row["dose_rate_uncertainty_pct"],
-            accumulated_dose=row["accumulated_dose"],
-            accumulated_duration_seconds=row["accumulated_duration_seconds"],
-            temperature_c=row["temperature_c"],
-            battery_pct=row["battery_pct"],
-            charging=row["charging"],
-            field_timestamps=_field_timestamps(row),
+        return _current_state(
+            public_device,
+            row,
+            datetime.now(UTC),
+            configured.availability_seconds,
         )
 
     @app.get("/api/v1/devices/{device}/scalar-history", response_model=ScalarHistoryResponse)

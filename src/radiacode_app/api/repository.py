@@ -101,6 +101,18 @@ class PublicRepository:
                 (slug,),
             ).fetchone()
 
+    def current_states(self) -> list[dict[str, Any]]:
+        with self._pool.connection() as connection:
+            return list(
+                connection.execute(
+                    """
+                    SELECT *
+                      FROM radiacode_api.device_status
+                     ORDER BY display_name, slug
+                    """
+                ).fetchall()
+            )
+
     def scalar_history(
         self,
         slug: str,

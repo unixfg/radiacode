@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { getCurrent, getHistoricalData, listDevices, PublicApiError } from "./api";
+import { getCurrentStates, getHistoricalData, listDevices, PublicApiError } from "./api";
 import brandMarkUrl from "./assets/brand-mark.svg";
 import { CurrentReadout } from "./components/CurrentReadout";
 import { EventTimeline } from "./components/EventTimeline";
@@ -18,6 +18,10 @@ function initialRange(): TimeRange {
 
 const EMPTY_SPECTRUM_REFRESH_MS = 60 * 1_000;
 const POPULATED_SPECTRUM_REFRESH_MS = 5 * 60 * 1_000;
+const CURRENT_REFRESH_MS = 5_000;
+const CURRENT_REQUEST_TIMEOUT_MS = 4_500;
+const CURRENT_MAX_BACKOFF_MS = 60_000;
+const CURRENT_AVAILABLE_MS = 10_000;
 
 function SectionHeading({ eyebrow, title, detail }: { eyebrow: string; title: string; detail?: string }) {
   return (
@@ -76,67 +80,108 @@ function App() {
   useEffect(() => {
     if (devices.length === 0) return;
     let active = true;
-    let inFlight = false;
-    const controllers = new Set<AbortController>();
-    const refresh = async () => {
-      if (inFlight) return;
-      inFlight = true;
-      const controller = new AbortController();
-      controllers.add(controller);
-      const timeout = window.setTimeout(() => controller.abort(), 4_500);
-      const results = await Promise.allSettled(
-        devices.map((device) => getCurrent(device.slug, controller.signal)),
-      );
-      window.clearTimeout(timeout);
-      controllers.delete(controller);
-      inFlight = false;
-      if (!active) return;
-      const updates: Record<string, CurrentState> = {};
-      results.forEach((result) => {
-        if (result.status === "fulfilled") updates[result.value.device] = result.value;
-      });
+    let failureCount = 0;
+    let timer: number | undefined;
+    let requestController: AbortController | undefined;
+    const pageIsHidden = () => document.visibilityState === "hidden";
+
+    const clearTimer = () => {
+      if (timer !== undefined) {
+        window.clearTimeout(timer);
+        timer = undefined;
+      }
+    };
+
+    const updateAvailabilityFromCache = () => {
       setCurrent((existing) => {
-        const next = { ...existing, ...updates };
-        results.forEach((result, index) => {
-          if (result.status === "rejected") {
-            const slug = devices[index].slug;
-            const cached = next[slug];
-            const receivedAtValue = cached?.received_at ?? devices[index].last_seen_at;
-            const receivedAt = receivedAtValue ? Date.parse(receivedAtValue) : Number.NaN;
-            next[slug] = {
-              device: slug,
-              received_at: receivedAtValue,
-              available: Number.isFinite(receivedAt) && Date.now() - receivedAt <= 10_000,
-              cps: cached?.cps ?? null,
-              dose_rate: cached?.dose_rate ?? null,
-              cps_uncertainty_pct: cached?.cps_uncertainty_pct ?? null,
-              dose_rate_uncertainty_pct: cached?.dose_rate_uncertainty_pct ?? null,
-              accumulated_dose: cached?.accumulated_dose ?? null,
-              accumulated_duration_seconds: cached?.accumulated_duration_seconds ?? null,
-              temperature_c: cached?.temperature_c ?? null,
-              battery_pct: cached?.battery_pct ?? null,
-              charging: cached?.charging ?? null,
-              field_timestamps: cached?.field_timestamps ?? {},
-            };
-          }
+        const next = { ...existing };
+        devices.forEach((device) => {
+          const cached = next[device.slug];
+          const receivedAtValue = cached?.received_at ?? device.last_seen_at;
+          const receivedAt = receivedAtValue ? Date.parse(receivedAtValue) : Number.NaN;
+          next[device.slug] = {
+            device: device.slug,
+            received_at: receivedAtValue,
+            available:
+              Number.isFinite(receivedAt) && Date.now() - receivedAt <= CURRENT_AVAILABLE_MS,
+            cps: cached?.cps ?? null,
+            dose_rate: cached?.dose_rate ?? null,
+            cps_uncertainty_pct: cached?.cps_uncertainty_pct ?? null,
+            dose_rate_uncertainty_pct: cached?.dose_rate_uncertainty_pct ?? null,
+            accumulated_dose: cached?.accumulated_dose ?? null,
+            accumulated_duration_seconds: cached?.accumulated_duration_seconds ?? null,
+            temperature_c: cached?.temperature_c ?? null,
+            battery_pct: cached?.battery_pct ?? null,
+            charging: cached?.charging ?? null,
+            field_timestamps: cached?.field_timestamps ?? {},
+          };
         });
         return next;
       });
-      if (Object.keys(updates).length > 0) {
+    };
+
+    const schedule = (delay: number) => {
+      clearTimer();
+      if (!active || pageIsHidden()) return;
+      timer = window.setTimeout(() => {
+        timer = undefined;
+        void refresh();
+      }, delay);
+    };
+
+    const refresh = async () => {
+      if (!active || pageIsHidden() || requestController) return;
+      const controller = new AbortController();
+      requestController = controller;
+      let timedOut = false;
+      const timeout = window.setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, CURRENT_REQUEST_TIMEOUT_MS);
+      try {
+        const states = await getCurrentStates(controller.signal);
+        if (!active || controller.signal.aborted || pageIsHidden()) return;
+        setCurrent(Object.fromEntries(states.map((state) => [state.device, state])));
         setLastRefresh(new Date());
-      }
-      if (results.some((result) => result.status === "rejected")) {
-        setCurrentError(true);
-      } else {
         setCurrentError(false);
+        failureCount = 0;
+        schedule(CURRENT_REFRESH_MS);
+      } catch (error: unknown) {
+        if (!active || (controller.signal.aborted && !timedOut)) return;
+        updateAvailabilityFromCache();
+        setCurrentError(true);
+        const delay = Math.min(
+          CURRENT_REFRESH_MS * 2 ** failureCount,
+          CURRENT_MAX_BACKOFF_MS,
+        );
+        failureCount += 1;
+        schedule(delay);
+      } finally {
+        window.clearTimeout(timeout);
+        if (requestController === controller) requestController = undefined;
       }
     };
+
+    const visibilityChanged = () => {
+      clearTimer();
+      if (pageIsHidden()) {
+        const controller = requestController;
+        requestController = undefined;
+        controller?.abort();
+        return;
+      }
+      void refresh();
+    };
+
+    document.addEventListener("visibilitychange", visibilityChanged);
     void refresh();
-    const interval = window.setInterval(() => void refresh(), 5_000);
     return () => {
       active = false;
-      window.clearInterval(interval);
-      controllers.forEach((controller) => controller.abort());
+      document.removeEventListener("visibilitychange", visibilityChanged);
+      clearTimer();
+      const controller = requestController;
+      requestController = undefined;
+      controller?.abort();
     };
   }, [devices]);
 
