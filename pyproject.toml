@@ -8,7 +8,8 @@ version = "0.1.0"
 description = "RadiaCode acquisition and history service"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
-license = { text = "AGPL-3.0-only" }
+license = "AGPL-3.0-only"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md", "LICENSES/*.txt"]
 authors = [{ name = "unixfg" }]
 dependencies = [
   "alembic==1.19.1",
@@ -42,7 +43,16 @@ radiacode = "radiacode_app.cli:app"
 packages = ["src/radiacode_app"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/radiacode_app", "tests", "schemas", "README.md", "LICENSE"]
+include = [
+  "src/radiacode_app",
+  "tests",
+  "schemas",
+  "README.md",
+  "SOURCE.md",
+  "LICENSE",
+  "LICENSES",
+  "THIRD_PARTY_NOTICES.md",
+]
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-config --strict-markers"

@@ -69,8 +69,16 @@ Exporter tests validate representative N42-2012 and NPESv2 output against the bu
 
 CI must pass Python, frontend, database/migration, exporter, and interoperability jobs before publishing. The release workflow builds one GHCR manifest for `linux/amd64` and `linux/arm64`, emits an SBOM and provenance attestation, then signs the immutable digest with keyless Sigstore/cosign.
 
+Published images carry OCI source, revision, and license labels. The dashboard's
+source link is compiled against that same Git commit. Exact-source retrieval and
+downstream build instructions are documented in [`SOURCE.md`](SOURCE.md).
+
 ## License
 
 Copyright 2026 unixfg contributors.
 
 Licensed under the GNU Affero General Public License version 3 only (`AGPL-3.0-only`).
+
+Third-party components retain their original compatible licenses. Copyright,
+license, source, and vendored-file provenance are recorded in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) and [`LICENSES/`](LICENSES/).
