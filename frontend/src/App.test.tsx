@@ -10,26 +10,27 @@ const devices = {
   ],
 };
 
+const currentStates = {
+  states: devices.devices.map((device) => ({
+    device: device.slug,
+    received_at: "2026-08-16T12:00:00Z",
+    available: true,
+    cps: device.slug === "rc-110" ? 12.5 : 9.1,
+    dose_rate: 0.08,
+    cps_uncertainty_pct: 3.2,
+    dose_rate_uncertainty_pct: 4.1,
+    accumulated_dose: 4.2,
+    accumulated_duration_seconds: 3600,
+    temperature_c: 22.5,
+    battery_pct: 87,
+    charging: true,
+    field_timestamps: {},
+  })),
+};
+
 function responseFor(url: string): object {
   if (url.endsWith("/devices")) return devices;
-  if (url.endsWith("/current")) {
-    const device = url.includes("rc-103g") ? "rc-103g" : "rc-110";
-    return {
-      device,
-      received_at: "2026-08-16T12:00:00Z",
-      available: true,
-      cps: device === "rc-110" ? 12.5 : 9.1,
-      dose_rate: 0.08,
-      cps_uncertainty_pct: 3.2,
-      dose_rate_uncertainty_pct: 4.1,
-      accumulated_dose: 4.2,
-      accumulated_duration_seconds: 3600,
-      temperature_c: 22.5,
-      battery_pct: 87,
-      charging: true,
-      field_timestamps: {},
-    };
-  }
+  if (url.endsWith("/device-states")) return currentStates;
   if (url.includes("scalar-history")) {
     return {
       device: "rc-110",
@@ -59,6 +60,7 @@ function mockApi() {
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
 });
 
 describe("public dashboard", () => {
@@ -80,8 +82,104 @@ describe("public dashboard", () => {
     expect(await screen.findByText("Detector reconnected")).toBeInTheDocument();
     expect(screen.getAllByRole("img", { name: "Energy spectrum" })).toHaveLength(2);
     expect(screen.getByRole("img", { name: /Time versus energy heatmap/ })).toBeInTheDocument();
-    expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/devices/rc-110/current"))).toBe(true);
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).endsWith("/device-states"))).toHaveLength(1);
+    expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/current"))).toBe(false);
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes("max_points=2000"))).toBe(true);
+  });
+
+  it("schedules one batch refresh five seconds after the previous request completes", async () => {
+    vi.useFakeTimers();
+    let liveRequests = 0;
+    let inFlight = 0;
+    let maxInFlight = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/device-states")) {
+        liveRequests += 1;
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((resolve) => window.setTimeout(resolve, 1_000));
+        inFlight -= 1;
+      }
+      return { ok: true, json: async () => responseFor(url) } as Response;
+    });
+
+    render(<App />);
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(liveRequests).toBe(1);
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    await act(async () => vi.advanceTimersByTimeAsync(4_999));
+    expect(liveRequests).toBe(1);
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    expect(liveRequests).toBe(2);
+    expect(maxInFlight).toBe(1);
+  });
+
+  it("pauses while hidden, aborts quietly, and refreshes immediately when visible", async () => {
+    vi.useFakeTimers();
+    let liveRequests = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/device-states")) {
+        liveRequests += 1;
+        if (liveRequests === 2) {
+          await new Promise<void>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () =>
+              reject(new DOMException("Aborted", "AbortError")),
+            );
+          });
+        }
+      }
+      return { ok: true, json: async () => responseFor(url) } as Response;
+    });
+
+    render(<App />);
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(liveRequests).toBe(1);
+    await act(async () => vi.advanceTimersByTimeAsync(5_000));
+    expect(liveRequests).toBe(2);
+
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+    expect(screen.queryByText(/Dashboard data is temporarily unavailable/)).not.toBeInTheDocument();
+    await act(async () => vi.advanceTimersByTimeAsync(60_000));
+    expect(liveRequests).toBe(2);
+
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+    expect(liveRequests).toBe(3);
+    expect(screen.queryByText(/Dashboard data is temporarily unavailable/)).not.toBeInTheDocument();
+  });
+
+  it("backs off failed live-state requests and resets after a success", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-16T12:00:00Z"));
+    const requestedAt: number[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/device-states")) {
+        requestedAt.push(Date.now());
+        if (requestedAt.length <= 5) {
+          return { ok: false, json: async () => ({ detail: "private failure" }) } as Response;
+        }
+      }
+      return { ok: true, json: async () => responseFor(url) } as Response;
+    });
+
+    render(<App />);
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(screen.getByText(/Dashboard data is temporarily unavailable/)).toBeInTheDocument();
+    for (const delay of [5_000, 10_000, 20_000, 40_000, 60_000]) {
+      await act(async () => vi.advanceTimersByTimeAsync(delay));
+    }
+    const origin = Date.parse("2026-08-16T12:00:00Z");
+    expect(requestedAt.map((at) => at - origin)).toEqual([0, 5_000, 15_000, 35_000, 75_000, 135_000]);
+    expect(screen.queryByText(/Dashboard data is temporarily unavailable/)).not.toBeInTheDocument();
+
+    await act(async () => vi.advanceTimersByTimeAsync(4_999));
+    expect(requestedAt).toHaveLength(6);
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    expect(requestedAt).toHaveLength(7);
   });
 
   it("never displays a backend or transport error body", async () => {

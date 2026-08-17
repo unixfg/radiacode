@@ -9,9 +9,11 @@ test.beforeEach(async ({ page }) => {
         { slug: "rc-110", name: "RadiaCode RC-110", model: "RC-110", firmware_version: "4.12", available: true, last_seen_at: "2026-08-16T12:00:00Z" },
         { slug: "rc-103g", name: "RadiaCode RC-103G", model: "RC-103G", firmware_version: "5.01", available: true, last_seen_at: "2026-08-16T12:00:00Z" },
       ] };
-    } else if (url.endsWith("/current")) {
-      const device = url.includes("rc-103g") ? "rc-103g" : "rc-110";
-      body = { device, received_at: "2026-08-16T12:00:00Z", available: true, cps: 12.5, dose_rate: 0.08, cps_uncertainty_pct: 3.2, dose_rate_uncertainty_pct: 4.1, accumulated_dose: 4.2, accumulated_duration_seconds: 3600, temperature_c: 22.5, battery_pct: 87, charging: true, field_timestamps: {} };
+    } else if (url.endsWith("/device-states")) {
+      body = { states: [
+        { device: "rc-110", received_at: "2026-08-16T12:00:00Z", available: true, cps: 12.5, dose_rate: 0.08, cps_uncertainty_pct: 3.2, dose_rate_uncertainty_pct: 4.1, accumulated_dose: 4.2, accumulated_duration_seconds: 3600, temperature_c: 22.5, battery_pct: 87, charging: true, field_timestamps: {} },
+        { device: "rc-103g", received_at: "2026-08-16T12:00:00Z", available: true, cps: 12.5, dose_rate: 0.08, cps_uncertainty_pct: 3.2, dose_rate_uncertainty_pct: 4.1, accumulated_dose: 4.2, accumulated_duration_seconds: 3600, temperature_c: 22.5, battery_pct: 87, charging: true, field_timestamps: {} },
+      ] };
     } else if (url.includes("scalar-history")) {
       body = { device: "rc-110", start: "2026-08-16T11:00:00Z", end: "2026-08-16T12:00:00Z", resolution_seconds: 60, points: [{ at: "2026-08-16T11:00:00Z", cps: { min: 8, max: 14, avg: 11, latest: 12 }, dose_rate: { min: 0.05, max: 0.1, avg: 0.08, latest: 0.08 } }, { at: "2026-08-16T12:00:00Z", cps: { min: 9, max: 15, avg: 12, latest: 12.5 }, dose_rate: { min: 0.06, max: 0.1, avg: 0.08, latest: 0.08 } }] };
     } else if (url.includes("/events")) {

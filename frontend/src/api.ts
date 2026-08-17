@@ -1,6 +1,7 @@
 import type {
   ComparisonResponse,
   CurrentState,
+  CurrentStatesResponse,
   DeviceSummary,
   EventsResponse,
   HistoricalData,
@@ -61,8 +62,9 @@ export async function listDevices(signal?: AbortSignal): Promise<DeviceSummary[]
   return response.devices;
 }
 
-export function getCurrent(slug: string, signal?: AbortSignal): Promise<CurrentState> {
-  return getJson<CurrentState>(`${devicePath(slug)}/current`, signal);
+export async function getCurrentStates(signal?: AbortSignal): Promise<CurrentState[]> {
+  const response = await getJson<CurrentStatesResponse>("/device-states", signal);
+  return response.states;
 }
 
 export async function getHistoricalData(

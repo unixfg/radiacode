@@ -648,6 +648,10 @@ def test_public_repository_uses_reader_role_and_weights_scalar_rollups(
 
     with _reader_repository(integration_database.dsn) as (repository, reader_dsn):
         assert repository.ping()
+        current_states = repository.current_states()
+        state_order = [(row["display_name"], row["slug"]) for row in current_states]
+        assert state_order == sorted(state_order)
+        assert all("usb_serial" not in row and "device_id" not in row for row in current_states)
         public_device = next(row for row in repository.devices() if row["slug"] == slug)
         assert public_device["firmware_version"] == "4.13"
         public_events = repository.events(
