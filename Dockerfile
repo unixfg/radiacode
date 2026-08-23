@@ -13,7 +13,7 @@ RUN npm run build
 COPY --chmod=0644 THIRD_PARTY_NOTICES.md /build/frontend/dist/assets/THIRD_PARTY_NOTICES.md
 COPY --chmod=0644 LICENSES/*.txt /build/frontend/dist/assets/LICENSES/
 
-FROM python:3.13.7-slim-bookworm AS wheel
+FROM python:3.13.15-slim-bookworm AS wheel
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1
 WORKDIR /build
@@ -22,7 +22,7 @@ COPY --chmod=0644 LICENSES/*.txt ./LICENSES/
 COPY src/ ./src/
 RUN python -m pip wheel --wheel-dir /wheels .
 
-FROM python:3.13.7-slim-bookworm AS runtime
+FROM python:3.13.15-slim-bookworm AS runtime
 ARG SOURCE_REVISION=main
 ARG SOURCE_URL=https://github.com/unixfg/radiacode
 LABEL org.opencontainers.image.source="${SOURCE_URL}" \
