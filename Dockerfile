@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:24.6.0-alpine3.22 AS frontend
+FROM node:25.9.0-alpine3.22 AS frontend
 ARG SOURCE_REVISION=main
 ARG SOURCE_URL=https://github.com/unixfg/radiacode
 ENV VITE_SOURCE_REVISION=${SOURCE_REVISION} \
