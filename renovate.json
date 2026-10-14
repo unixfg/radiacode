@@ -1,0 +1,12 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "schedule:weekly",
+    ":maintainLockFilesWeekly"
+  ],
+  "enabledManagers": ["pep621", "npm", "dockerfile", "github-actions"],
+  "vulnerabilityAlerts": {
+    "enabled": true
+  }
+}
