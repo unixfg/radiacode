@@ -50,10 +50,15 @@ Five-minute slices are available for N42, NPES, and CSV and are capped at 10,000
 Python 3.13 and Node 24 are the supported toolchains.
 
 Dependency updates are managed by [Renovate](renovate.json) for Python, frontend
-npm packages, Docker images, and GitHub Actions. Updates and npm lockfile
-maintenance run weekly. The [Renovate GitHub App](https://github.com/apps/renovate)
-needs access to this repository; keep GitHub's dependency graph and Dependabot
-alerts enabled so Renovate can propose security fixes outside the weekly schedule.
+npm packages, Docker images, and GitHub Actions. Routine updates and npm lockfile
+maintenance run daily between midnight and noon in America/Chicago, with at most
+two concurrent update PRs and four new PRs per hour. Patch, minor, and image digest
+updates may merge once required CI passes; major updates need manual review.
+React and ReactDOM updates are grouped, and Node 24 and Python 3.13 remain the
+supported toolchains. The [Renovate GitHub App](https://github.com/apps/renovate)
+needs repository access and permission to read Dependabot alerts. Keep GitHub's
+dependency graph and alerts enabled so security fixes can bypass the update
+schedule; security majors still need manual review.
 
 ```bash
 python3.13 -m venv .venv
