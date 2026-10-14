@@ -2,11 +2,143 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended",
-    "schedule:weekly",
-    ":maintainLockFilesWeekly"
+    ":dependencyDashboard",
+    ":semanticCommits"
   ],
-  "enabledManagers": ["pep621", "npm", "dockerfile", "github-actions"],
+  "timezone": "America/Chicago",
+  "schedule": [
+    "* 0-11 * * *"
+  ],
+  "updateNotScheduled": false,
+  "automerge": false,
+  "automergeType": "pr",
+  "automergeStrategy": "merge-commit",
+  "platformAutomerge": true,
+  "rebaseWhen": "conflicted",
+  "ignoreTests": false,
+  "internalChecksFilter": "strict",
+  "prHourlyLimit": 4,
+  "prConcurrentLimit": 2,
+  "labels": [
+    "dependencies"
+  ],
   "vulnerabilityAlerts": {
-    "enabled": true
+    "enabled": true,
+    "addLabels": [
+      "security"
+    ],
+    "schedule": [],
+    "minimumReleaseAge": null,
+    "updateNotScheduled": true,
+    "groupName": null
+  },
+  "packageRules": [
+    {
+      "description": "Group routine GitHub Actions updates",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "digest",
+        "pinDigest",
+        "patch",
+        "minor"
+      ],
+      "groupName": "github-actions"
+    },
+    {
+      "description": "Keep React, ReactDOM, and their type packages together for routine updates",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchPackageNames": [
+        "react",
+        "react-dom",
+        "@types/react",
+        "@types/react-dom"
+      ],
+      "matchUpdateTypes": [
+        "patch",
+        "minor"
+      ],
+      "groupName": "react"
+    },
+    {
+      "description": "Keep the Docker frontend on the supported Node 24 toolchain",
+      "matchManagers": [
+        "dockerfile"
+      ],
+      "matchPackageNames": [
+        "node"
+      ],
+      "allowedVersions": "/^24(?:[.-]|$)/"
+    },
+    {
+      "description": "Keep Node type definitions aligned with Node 24",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchPackageNames": [
+        "@types/node"
+      ],
+      "allowedVersions": "<25"
+    },
+    {
+      "description": "Keep Docker Python aligned with the Python 3.13 application requirement",
+      "matchManagers": [
+        "dockerfile"
+      ],
+      "matchPackageNames": [
+        "python"
+      ],
+      "allowedVersions": "/^3\\.13(?:[.-]|$)/"
+    },
+    {
+      "description": "Keep the Python requirement on the supported Python 3.13 toolchain",
+      "matchManagers": [
+        "pep621"
+      ],
+      "matchDepTypes": [
+        "requires-python"
+      ],
+      "allowedVersions": ">=3.13,<3.14"
+    },
+    {
+      "description": "Auto-merge routine updates after required CI passes",
+      "matchUpdateTypes": [
+        "patch",
+        "minor",
+        "digest",
+        "pinDigest"
+      ],
+      "automerge": true
+    },
+    {
+      "description": "Keep major updates separate and require manual merging",
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "groupName": null,
+      "automerge": false,
+      "addLabels": [
+        "major-update"
+      ]
+    }
+  ],
+  "enabledManagers": [
+    "pep621",
+    "npm",
+    "dockerfile",
+    "github-actions"
+  ],
+  "constraints": {
+    "node": "^24.0.0",
+    "python": ">=3.13,<3.14"
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": [
+      "* 0-11 * * *"
+    ]
   }
 }
