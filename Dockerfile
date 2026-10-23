@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1.28
 
 FROM node:24.6.0-alpine3.22 AS frontend
 ARG SOURCE_REVISION=main
