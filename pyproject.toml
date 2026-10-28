@@ -17,7 +17,7 @@ dependencies = [
   "paho-mqtt==2.1.0",
   "prometheus-client==0.26.0",
   "psycopg[binary,pool]==3.3.6",
-  "pydantic-settings==2.16.1",
+  "pydantic-settings==2.16.2",
   "radiacode==0.4.0",
   "structlog==26.1.0",
   "typer==0.27.3",
